@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dev City</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d1117;
+    color: #c9d1d9;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: #f0f6fc;
+    margin-bottom: 4px;
+    letter-spacing: -0.3px;
+  }
+  .subtitle { font-size: 13px; color: #8b949e; margin-bottom: 20px; }
+
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 16px;
+    width: 100%;
+    max-width: 860px;
+    position: relative;
+  }
+
+  canvas { display: block; width: 100%; border-radius: 8px; cursor: crosshair; }
+
+  .tooltip {
+    position: absolute;
+    background: #1c2128;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .12s;
+    max-width: 200px;
+    z-index: 10;
+    color: #c9d1d9;
+    line-height: 1.5;
+  }
+  .tooltip strong { display:block; font-size:13px; color:#f0f6fc; margin-bottom:3px; }
+  .tooltip .tag {
+    display: inline-block;
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 11px;
+    margin-top: 4px;
+    margin-right: 3px;
+    color: #8b949e;
+  }
+  .tooltip a { color: #58a6ff; text-decoration: none; font-size: 11px; }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+    align-items: center;
+  }
+
+  .btn-group { display: flex; gap: 5px; flex-wrap: wrap; }
+
+  button {
+    background: transparent;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    color: #8b949e;
+    transition: all .12s;
+  }
+  button:hover { background: #21262d; color: #c9d1d9; }
+  button.active { border-color: #58a6ff; color: #58a6ff; background: rgba(88,166,255,0.08); }
+
+  label { font-size: 12px; color: #8b949e; display:flex; align-items:center; gap:6px; margin-left:auto; }
+  input[type=range] { width: 100px; accent-color: #58a6ff; }
+
+  .stat-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .stat {
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 8px 16px;
+    min-width: 88px;
+  }
+  .stat-val { font-size: 20px; font-weight: 600; color: #f0f6fc; }
+  .stat-lbl { font-size: 11px; color: #8b949e; margin-top: 1px; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .leg { display:flex; align-items:center; gap:5px; font-size:12px; color:#8b949e; }
+  .leg-dot { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+
+  .generated { font-size: 11px; color: #484f58; margin-top: 14px; text-align:right; }
+</style>
+</head>
+<body>
+
+<h1 id="city-title">Dev City</h1>
+<p class="subtitle" id="city-sub">Loading your repositories…</p>
+
+<div class="card">
+  <canvas id="c"></canvas>
+  <div class="tooltip" id="tip"></div>
+
+  <div class="stat-row" id="stats"></div>
+
+  <div class="controls">
+    <div class="btn-group" id="zone-btns">
+      <button class="active" onclick="setView('all',this)">All zones</button>
+      <button onclick="setView('skyscraper',this)">🏢 Skyscrapers</button>
+      <button onclick="setView('industrial',this)">🏭 Industrial</button>
+      <button onclick="setView('event',this)">🎪 Events</button>
+      <button onclick="setView('suburb',this)">🌱 Suburbs</button>
+    </div>
+    <label>
+      Rotate
+      <input type="range" min="-80" max="80" value="0" oninput="setRot(+this.value)">
+    </label>
+  </div>
+
+  <div class="legend">
+    <div class="leg"><div class="leg-dot" style="background:#4f72f5"></div>Skyscraper district — high commits</div>
+    <div class="leg"><div class="leg-dot" style="background:#e07a3a"></div>Industrial zone — backend/infra</div>
+    <div class="leg"><div class="leg-dot" style="background:#b46fd6"></div>Event zone — hackathons</div>
+    <div class="leg"><div class="leg-dot" style="background:#4aac77"></div>Suburbs — small utilities</div>
+  </div>
+
+  <div class="generated" id="generated"></div>
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let repos      = [];
+let rotDeg     = 0;
+let activeZone = 'all';
+let hoveredIdx = -1;
+let maxCommits = 1;
+
+const COLORS = {
+  skyscraper: { roof:'#4f72f5', faces:['#3a58c4','#2a3f9a','#1e2f7a','#253680'] },
+  industrial:  { roof:'#e07a3a', faces:['#b5601d','#8c4810','#7a3e0d','#6a3608'] },
+  event:       { roof:'#b46fd6', faces:['#8a3faa','#6e2e8c','#521870','#461460'] },
+  suburb:      { roof:'#4aac77', faces:['#2d8558','#226644','#1a5437','#164830'] },
+};
+
+const TILE = 72;
+const HW   = 32;
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const tip    = document.getElementById('tip');
+
+// ─── Projection ───────────────────────────────────────────────────────────────
+function iso(wx, wy, wz) {
+  const r  = rotDeg * Math.PI / 180;
+  const rx = wx * Math.cos(r) - wy * Math.sin(r);
+  const ry = wx * Math.sin(r) + wy * Math.cos(r);
+  return { sx: (rx - ry) * 0.866, sy: (rx + ry) * 0.25 - wz };
+}
+
+function isFrontFacing(pts, ox, oy) {
+  const ax = ox+pts[1].sx-(ox+pts[0].sx), ay = oy+pts[1].sy-(oy+pts[0].sy);
+  const bx = ox+pts[2].sx-(ox+pts[0].sx), by = oy+pts[2].sy-(oy+pts[0].sy);
+  return (ax*by - ay*bx) < 0;
+}
+
+// ─── Layout ───────────────────────────────────────────────────────────────────
+function getW() { return canvas.width  / (window.devicePixelRatio||1); }
+function getH() { return canvas.height / (window.devicePixelRatio||1); }
+
+function buildAll() {
+  const COLS = Math.max(4, Math.ceil(Math.sqrt(repos.length * 1.4)));
+  return repos.map((r, i) => {
+    const col = i % COLS;
+    const row = Math.floor(i / COLS);
+    const wx  = (col - (COLS-1)/2) * TILE;
+    const wy  = (row - Math.floor(repos.length/COLS)/2) * TILE;
+    const bh  = Math.max(16, (r.commits / maxCommits) * 170);
+
+    const rad = rotDeg * Math.PI / 180;
+    const rwx = wx*Math.cos(rad) - wy*Math.sin(rad);
+    const rwy = wx*Math.sin(rad) + wy*Math.cos(rad);
+
+    const v = (dx,dy,dz) => iso(wx+dx, wy+dy, dz);
+    const h = bh;
+    const bnw=v(-HW,-HW,0), bne=v(HW,-HW,0), bse=v(HW,HW,0), bsw=v(-HW,HW,0);
+    const tnw=v(-HW,-HW,h), tne=v(HW,-HW,h), tse=v(HW,HW,h),  tsw=v(-HW,HW,h);
+
+    return {
+      ...r, idx:i, bh, wx, wy,
+      depthKey: rwx + rwy,
+      faceN: [bne,bnw,tnw,tne],
+      faceE: [bse,bne,tne,tse],
+      faceS: [bsw,bse,tse,tsw],
+      faceW: [bnw,bsw,tsw,tnw],
+      roof:  [tnw,tne,tse,tsw],
+      topLabel: iso(wx, wy, h+6),
+      allPts: [bnw,bne,bse,bsw,tnw,tne,tse,tsw],
+    };
+  });
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function facePath(pts, ox, oy) {
+  ctx.beginPath();
+  ctx.moveTo(ox+pts[0].sx, oy+pts[0].sy);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(ox+pts[i].sx, oy+pts[i].sy);
+  ctx.closePath();
+}
+
+function draw() {
+  if (!repos.length) return;
+  const W=getW(), H=getH();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const ox=W*0.5, oy=H*0.60;
+
+  const items = buildAll();
+  items.sort((a,b) => a.depthKey - b.depthKey);
+
+  // Ground tiles
+  items.forEach(r => {
+    const corners = [
+      iso(r.wx-HW,r.wy-HW,0), iso(r.wx+HW,r.wy-HW,0),
+      iso(r.wx+HW,r.wy+HW,0), iso(r.wx-HW,r.wy+HW,0),
+    ];
+    facePath(corners,ox,oy);
+    ctx.fillStyle='rgba(255,255,255,0.025)'; ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=0.5; ctx.stroke();
+  });
+
+  // Buildings
+  items.forEach(r => {
+    const vis   = activeZone==='all' || r.type===activeZone;
+    const alpha = vis ? 1 : 0.12;
+    const isHov = r.idx===hoveredIdx && vis;
+    const C     = COLORS[r.type];
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    ['faceN','faceE','faceS','faceW'].forEach((fn,fi) => {
+      const pts = r[fn];
+      if (!isFrontFacing(pts,ox,oy)) return;
+      ctx.fillStyle = C.faces[fi];
+      facePath(pts,ox,oy); ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=0.5; ctx.stroke();
+
+      // Windows
+      if (vis && r.bh > 28) {
+        const numFloors = Math.min(9, Math.floor(r.bh/18));
+        ctx.fillStyle = r.active ? 'rgba(255,215,70,0.55)' : 'rgba(200,220,255,0.12)';
+        for (let f=0; f<numFloors; f++) {
+          const t0=0.1+f*(0.8/numFloors), t1=t0+0.055;
+          const lL=t=>({ x:ox+pts[0].sx+(pts[3].sx-pts[0].sx)*t, y:oy+pts[0].sy+(pts[3].sy-pts[0].sy)*t });
+          const lR=t=>({ x:ox+pts[1].sx+(pts[2].sx-pts[1].sx)*t, y:oy+pts[1].sy+(pts[2].sy-pts[1].sy)*t });
+          const l0=lL(t0),l1=lL(t1),r0=lR(t0),r1=lR(t1);
+          const mx0=(l0.x+r0.x)/2,my0=(l0.y+r0.y)/2,mx1=(l1.x+r1.x)/2,my1=(l1.y+r1.y)/2;
+          ctx.beginPath();
+          ctx.moveTo(l0.x+(mx0-l0.x)*0.1, l0.y+(my0-l0.y)*0.1);
+          ctx.lineTo(l0.x+(mx0-l0.x)*0.42,l0.y+(my0-l0.y)*0.42);
+          ctx.lineTo(l1.x+(mx1-l1.x)*0.42,l1.y+(my1-l1.y)*0.42);
+          ctx.lineTo(l1.x+(mx1-l1.x)*0.1, l1.y+(my1-l1.y)*0.1);
+          ctx.closePath(); ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(l0.x+(mx0-l0.x)*0.58,l0.y+(my0-l0.y)*0.58);
+          ctx.lineTo(r0.x+(mx0-r0.x)*0.1, r0.y+(my0-r0.y)*0.1);
+          ctx.lineTo(r1.x+(mx1-r1.x)*0.1, r1.y+(my1-r1.y)*0.1);
+          ctx.lineTo(l1.x+(mx1-l1.x)*0.58,l1.y+(my1-l1.y)*0.58);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+    });
+
+    // Roof
+    facePath(r.roof,ox,oy);
+    ctx.fillStyle=C.roof; ctx.fill();
+    ctx.strokeStyle = isHov ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.4)';
+    ctx.lineWidth   = isHov ? 1.5 : 0.5;
+    ctx.stroke();
+
+    // Active glow
+    if (r.active && vis) {
+      ctx.save(); ctx.globalAlpha=alpha*0.45;
+      facePath(r.roof,ox,oy);
+      ctx.strokeStyle=C.roof; ctx.lineWidth=3; ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.restore();
+
+    // Labels
+    if (r.bh > 95 && vis) {
+      ctx.save(); ctx.globalAlpha=0.85;
+      ctx.fillStyle='#f0f6fc'; ctx.font='500 10px sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='bottom';
+      ctx.fillText(`${r.commits} XP`, ox+r.topLabel.sx, oy+r.topLabel.sy);
+      ctx.restore();
+    }
+    if (r.idx===hoveredIdx && vis) {
+      ctx.save();
+      ctx.font='500 11px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='bottom';
+      ctx.fillStyle=C.roof;
+      ctx.fillText(r.name, ox+r.topLabel.sx, oy+r.topLabel.sy-(r.bh>95?14:2));
+      ctx.restore();
+    }
+  });
+}
+
+// ─── Interaction ──────────────────────────────────────────────────────────────
+function hitTest(mx,my) {
+  const W=getW(),H=getH(),ox=W*0.5,oy=H*0.60;
+  const items=buildAll();
+  items.sort((a,b)=>b.depthKey-a.depthKey);
+  for(const r of items) {
+    if(activeZone!=='all'&&r.type!==activeZone) continue;
+    const xs=r.allPts.map(p=>ox+p.sx), ys=r.allPts.map(p=>oy+p.sy);
+    if(mx>=Math.min(...xs)&&mx<=Math.max(...xs)&&my>=Math.min(...ys)&&my<=Math.max(...ys)) return r;
+  }
+  return null;
+}
+
+canvas.addEventListener('mousemove', e => {
+  const rect=canvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const hit=hitTest(mx,my);
+  hoveredIdx = hit ? hit.idx : -1;
+  if(hit) {
+    tip.style.left=(mx+16)+'px'; tip.style.top=(my-12)+'px';
+    const langDot = hit.langColor ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${hit.langColor};margin-right:4px;"></span>` : '';
+    const topics  = (hit.topics||[]).slice(0,3).map(t=>`<span class="tag">${t}</span>`).join('');
+    tip.innerHTML = `
+      <strong>${hit.name}</strong>
+      ${hit.desc ? `<span style="opacity:.8;font-size:11px">${hit.desc.slice(0,60)}${hit.desc.length>60?'…':''}</span><br>` : ''}
+      <span>${hit.commits} commits &nbsp;·&nbsp; ⭐ ${hit.stars}</span><br>
+      ${langDot}<span style="opacity:.7">${hit.language||''}</span>
+      ${topics ? '<br>'+topics : ''}
+      <br><a href="${hit.url}" target="_blank" rel="noopener">View on GitHub →</a>`;
+    tip.style.opacity='1'; canvas.style.cursor='pointer';
+  } else { tip.style.opacity='0'; canvas.style.cursor='crosshair'; }
+  draw();
+});
+canvas.addEventListener('mouseleave',()=>{ hoveredIdx=-1; tip.style.opacity='0'; draw(); });
+
+function setView(zone,btn) {
+  activeZone=zone;
+  document.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  updateStats(); draw();
+}
+function setRot(v){ rotDeg=v; draw(); }
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+function updateStats() {
+  const f = activeZone==='all' ? repos : repos.filter(r=>r.type===activeZone);
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="stat-val">${f.reduce((s,r)=>s+r.commits,0).toLocaleString()}</div><div class="stat-lbl">Total XP</div></div>
+    <div class="stat"><div class="stat-val">${f.length}</div><div class="stat-lbl">Repos</div></div>
+    <div class="stat"><div class="stat-val">${f.reduce((s,r)=>s+r.stars,0).toLocaleString()}</div><div class="stat-lbl">Stars</div></div>
+    <div class="stat"><div class="stat-val">${f.filter(r=>r.active).length}</div><div class="stat-lbl">Active</div></div>`;
+}
+
+// ─── Resize ───────────────────────────────────────────────────────────────────
+function resize() {
+  const dpr=window.devicePixelRatio||1;
+  const w=canvas.parentElement.clientWidth - 32; // subtract card padding
+  const h=Math.min(500, Math.max(320, w*0.52));
+  canvas.width=w*dpr; canvas.height=h*dpr;
+  canvas.style.width=w+'px'; canvas.style.height=h+'px';
+  ctx.scale(dpr,dpr); draw();
+}
+
+// ─── Load data ────────────────────────────────────────────────────────────────
+async function loadData() {
+  try {
+    const res  = await fetch('city-data.json');
+    if (!res.ok) throw new Error('city-data.json not found');
+    const data = await res.json();
+
+    repos      = data.buildings;
+    maxCommits = Math.max(...repos.map(r=>r.commits), 1);
+
+    document.getElementById('city-title').textContent = `${data.user}'s Dev City`;
+    document.getElementById('city-sub').textContent   =
+      `${repos.length} repositories · Building height = commit XP`;
+    document.getElementById('generated').textContent  =
+      `Last updated: ${new Date(data.generated).toLocaleDateString()}`;
+
+    updateStats();
+    resize();
+  } catch(err) {
+    document.getElementById('city-sub').textContent = `Error: ${err.message}`;
+    console.error(err);
+  }
+}
+
+window.addEventListener('resize', resize);
+loadData();
+</script>
+</body>
+</html>
