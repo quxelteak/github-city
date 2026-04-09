@@ -33,3 +33,15 @@ jobs:
           git add city-data.json
           git diff --cached --quiet || git commit -m "chore: update city data [skip ci]"
           git push
+
+      - name: Install Puppeteer
+        run: npm install puppeteer
+
+      - name: Screenshot city
+        run: node scripts/screenshot.js
+
+      - name: Commit updated files
+        run: |
+          git add city-data.json preview.png
+          git diff --cached --quiet || git commit -m "chore: update city \[skip ci]"
+          git push
