@@ -91,42 +91,9 @@ If you have a `YOUR-USERNAME.github.io` site, just drop an iframe there:
 
 ## Bonus: auto-screenshot on each update
 
-Add these steps to `.github/workflows/update-city.yml` **before** the git commit step:
-
-```yaml
-      - name: Install Puppeteer
-        run: npm install puppeteer
-
-      - name: Screenshot city
-        run: node scripts/screenshot.js
-
-      - name: Commit updated files
-        run: |
-          git add city-data.json preview.png
-          git diff --cached --quiet || git commit -m "chore: update city \[skip ci]"
-          git push
-```
+Add `.github/workflows/update-city.yml` **before** the git commit step:
 
 And create `scripts/screenshot.js`:
-
-```js
-const puppeteer = require('puppeteer');
-const path      = require('path');
-
-(async () => {
-  const browser = await puppeteer.launch({ args: \['--no-sandbox'] });
-  const page    = await browser.newPage();
-  await page.setViewport({ width: 860, height: 500, deviceScaleFactor: 2 });
-
-  const file = 'file://' + path.resolve('city.html');
-  await page.goto(file, { waitUntil: 'networkidle0' });
-  await page.waitForTimeout(800); // let canvas finish drawing
-
-  await page.screenshot({ path: 'preview.png' });
-  await browser.close();
-  console.log('Saved preview.png');
-})();
-```
 
 \---
 
