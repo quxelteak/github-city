@@ -40,6 +40,9 @@ jobs:
       - name: Screenshot city
         run: node scripts/screenshot.js
 
+      - name: Debug files
+        run: ls -lh preview.png
+
       - name: Commit updated files
         run: |
           git add city-data.json preview.png
