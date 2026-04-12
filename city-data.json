@@ -1,36 +1,18 @@
 {
   "user": "quxelteak",
-  "generated": "2026-04-11T03:53:08.005Z",
+  "generated": "2026-04-12T03:28:57.632Z",
   "buildings": [
     {
       "name": "github-city",
       "desc": "",
       "url": "https://github.com/quxelteak/github-city",
-      "commits": 17,
+      "commits": 19,
       "stars": 0,
       "language": "HTML",
       "langColor": "#e34c26",
       "type": "suburb",
       "active": true,
       "topics": []
-    },
-    {
-      "name": "Keycloak-Login",
-      "desc": "Authentication solution that integrates Keycloak with a React. It provides a secure authentication flow, Single Sign-On (SSO), protected routes, and a customizable Keycloak theme. ",
-      "url": "https://github.com/quxelteak/Keycloak-Login",
-      "commits": 6,
-      "stars": 0,
-      "language": "FreeMarker",
-      "langColor": "#0050b2",
-      "type": "suburb",
-      "active": false,
-      "topics": [
-        "docker",
-        "keycloak",
-        "freemarker-template",
-        "react",
-        "oauth"
-      ]
     }
   ]
 }
